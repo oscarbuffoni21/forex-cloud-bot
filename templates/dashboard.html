@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Forex Bot Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background-color: #f5f5f5; }
+    #summary { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>📊 Forex Bot Dashboard</h1>
+
+  <div id="summary">
+    <p><strong>Total Trades:</strong> <span id="total"></span></p>
+    <p><strong>Total Profit (Unrealized):</strong> <span id="profit"></span></p>
+  </div>
+
+  <table id="tradeTable">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Pair</th>
+        <th>Side</th>
+        <th>Entry</th>
+        <th>Stop Loss</th>
+        <th>Take Profit</th>
+        <th>ATR</th>
+        <th>Size</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadTrades() {
+      const res = await fetch('/api/trades');
+      const data = await res.json();
+      const trades = data.trades || [];
+      const tbody = document.querySelector("#tradeTable tbody");
+      tbody.innerHTML = "";
+
+      let totalProfit = 0;
+      trades.forEach(trade => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${new Date(trade.timestamp).toLocaleString()}</td>
+          <td>${trade.instrument}</td>
+          <td>${trade.side}</td>
+          <td>${trade.entry_price}</td>
+          <td>${trade.stop_loss}</td>
+          <td>${trade.take_profit}</td>
+          <td>${trade.atr}</td>
+          <td>${trade.units}</td>
+        `;
+        tbody.appendChild(row);
+
+        if (trade.side === "BUY") {
+          totalProfit += (trade.take_profit - trade.entry_price) * trade.units;
+        } else {
+          totalProfit += (trade.entry_price - trade.take_profit) * Math.abs(trade.units);
+        }
+      });
+
+      document.getElementById("total").textContent = trades.length;
+      document.getElementById("profit").textContent = "£" + totalProfit.toFixed(2);
+    }
+
+    loadTrades();
+    setInterval(loadTrades, 5000); // refresh every 5 seconds
+  </script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+timestamp,instrument,side,entry_price,stop_loss,take_profit,atr,units
+2025-05-20T21:09:45.290368,EUR_USD,BUY,1.12345,1.122,1.126,0.00075,1000
