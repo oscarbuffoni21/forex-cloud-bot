@@ -2,30 +2,44 @@ import asyncio
 import aiohttp
 import time
 import statistics
-import uuid
 import csv
 from datetime import datetime
+import os
+import json
 
 # === CONFIG ===
 OANDA_STREAM_URL = "https://stream-fxpractice.oanda.com/v3/accounts/{account_id}/pricing/stream"
 OANDA_API_URL = "https://api-fxpractice.oanda.com/v3"
-ACCESS_TOKEN = "REPLACE_ME"
-ACCOUNT_ID = "REPLACE_ME"
-INSTRUMENT = "EUR_USD"
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+INSTRUMENTS = ["USD_JPY"]
 HEADERS = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
 
 # === STRATEGY PARAMETERS ===
-ATR_PERIOD = 10
+RSI_PERIOD = 21
+BUY_THRESH = 25
+SELL_THRESH = 65
 ATR_MULTIPLIER = 1.5
-MIN_MOMENTUM_MOVE = 0.0002
+MIN_SL = 0.0005
+TP_SL_RATIO = 2.5
 SPREAD_LIMIT = 0.0003
-TRADE_SIZE = 1000  # Units
+MIN_MOMENTUM_MOVE = 0.0002
+ATR_PERIOD = 9
+TRADE_SIZE = 2000
 
 # === STATE ===
-last_prices = []
-active_trade = None
+last_prices = {symbol: [] for symbol in INSTRUMENTS}
+active_trades = {symbol: None for symbol in INSTRUMENTS}
 
 # === UTILITY FUNCTIONS ===
+def compute_rsi(prices, period):
+    if len(prices) < period + 1:
+        return 50
+    gains = [max(prices[i] - prices[i - 1], 0) for i in range(1, len(prices))]
+    losses = [abs(min(prices[i] - prices[i - 1], 0)) for i in range(1, len(prices))]
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    return 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss != 0 else 100
 
 def compute_atr(price_history):
     if len(price_history) < ATR_PERIOD:
@@ -34,33 +48,22 @@ def compute_atr(price_history):
     return sum(diffs[-ATR_PERIOD:]) / ATR_PERIOD
 
 def log_trade_to_csv(trade_data, filename="trades.csv"):
-    file_exists = False
-    try:
-        with open(filename, 'r'):
-            file_exists = True
-    except FileNotFoundError:
-        pass
-
+    file_exists = os.path.isfile(filename)
     with open(filename, 'a', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=trade_data.keys())
         if not file_exists:
             writer.writeheader()
         writer.writerow(trade_data)
 
-async def place_order(units, atr, entry_price):
-    sl_price = None
-    tp_price = None
-
-    if units > 0:  # BUY
-        sl_price = round(entry_price - atr * ATR_MULTIPLIER, 5)
-        tp_price = round(entry_price + atr * ATR_MULTIPLIER * 2, 5)
-    else:  # SELL
-        sl_price = round(entry_price + atr * ATR_MULTIPLIER, 5)
-        tp_price = round(entry_price - atr * ATR_MULTIPLIER * 2, 5)
+async def place_order(symbol, units, atr, entry_price):
+    sl_distance = max(atr * ATR_MULTIPLIER, MIN_SL)
+    tp_distance = sl_distance * TP_SL_RATIO
+    sl_price = round(entry_price - sl_distance, 5) if units > 0 else round(entry_price + sl_distance, 5)
+    tp_price = round(entry_price + tp_distance, 5) if units > 0 else round(entry_price - tp_distance, 5)
 
     order = {
         "order": {
-            "instrument": INSTRUMENT,
+            "instrument": symbol,
             "units": str(units),
             "type": "MARKET",
             "positionFill": "DEFAULT",
@@ -69,66 +72,79 @@ async def place_order(units, atr, entry_price):
         }
     }
 
-    print(f"🛒 Placing order: {'BUY' if units > 0 else 'SELL'} @ {entry_price:.5f} | SL: {sl_price} | TP: {tp_price}")
-
+    print(f"\n🛒 {symbol}: Placing {'BUY' if units > 0 else 'SELL'} @ {entry_price:.5f} | SL: {sl_price} | TP: {tp_price}")
     async with aiohttp.ClientSession() as session:
         async with session.post(f"{OANDA_API_URL}/accounts/{ACCOUNT_ID}/orders", headers=HEADERS, json=order) as r:
             resp_json = await r.json()
-            print(f"📦 Order response: {resp_json}")
+            print("📦 Order response:", resp_json)
 
-    # Log to CSV
-    log_trade_to_csv({
-        "timestamp": datetime.utcnow().isoformat(),
-        "instrument": INSTRUMENT,
-        "side": "BUY" if units > 0 else "SELL",
-        "entry_price": round(entry_price, 5),
-        "stop_loss": sl_price,
-        "take_profit": tp_price,
-        "atr": round(atr, 5),
-        "units": units
-    })
+    try:
+        tx = resp_json["orderFillTransaction"]
+        profit = float(tx.get("pl", 0))
+        quote_profit = float(tx.get("quotePL", 0))
+        balance = float(tx.get("accountBalance", 0))
+        trade_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "instrument": symbol,
+            "side": "BUY" if units > 0 else "SELL",
+            "entry_price": round(entry_price, 5),
+            "stop_loss": sl_price,
+            "take_profit": tp_price,
+            "atr": round(atr, 5),
+            "position_size": units,
+            "profit": profit,
+            "currency": "USD",
+            "account_balance": balance
+        }
+        log_trade_to_csv(trade_data)
+    except Exception as e:
+        print(f"⚠️ {symbol}: Failed to log trade profit: {e}")
 
 # === MAIN STRATEGY ===
-
-async def handle_price_update(bid, ask):
-    global last_prices, active_trade
-
+async def handle_price_update(symbol, bid, ask):
     mid_price = (bid + ask) / 2
     spread = ask - bid
-    print(f"📈 Price update: Bid={bid:.5f} Ask={ask:.5f} Spread={spread:.5f}")
+    last_prices[symbol].append(mid_price)
+    if len(last_prices[symbol]) > 100:
+        last_prices[symbol].pop(0)
 
-    last_prices.append(mid_price)
-    if len(last_prices) > ATR_PERIOD + 5:
-        last_prices.pop(0)
+    atr = compute_atr(last_prices[symbol])
+    rsi = compute_rsi(last_prices[symbol], RSI_PERIOD)
+    recent_move = mid_price - last_prices[symbol][0]
 
-    if spread > SPREAD_LIMIT or active_trade:
+    print(f"\n📈 {symbol}: Mid={mid_price:.5f} | RSI={rsi:.2f} | ATR={atr:.5f} | ΔPrice={recent_move:.5f} | Spread={spread:.5f}")
+
+    if active_trades[symbol] and (time.time() - active_trades[symbol]["time"] > 300):
+        print(f"⏹ {symbol}: Clearing stale trade")
+        active_trades[symbol] = None
+
+    if spread > SPREAD_LIMIT:
+        print(f"⏸ {symbol}: Skipping — Spread too high")
         return
 
-    atr = compute_atr(last_prices)
-    if atr is None:
+    if active_trades[symbol]:
+        print(f"⏸ {symbol}: Skipping — Trade already active")
         return
 
-    recent_move = mid_price - last_prices[0]
+    if atr is None or len(last_prices[symbol]) < RSI_PERIOD + 1:
+        print(f"⏸ {symbol}: Not enough data")
+        return
 
-    if abs(recent_move) > MIN_MOMENTUM_MOVE:
-        trade_type = "buy" if recent_move > 0 else "sell"
-        units = TRADE_SIZE if trade_type == "buy" else -TRADE_SIZE
-        print(f"🔁 Momentum detected: {trade_type.upper()} @ {mid_price:.5f} | ATR: {atr:.5f}")
+    if abs(recent_move) < MIN_MOMENTUM_MOVE:
+        print(f"⏸ {symbol}: No momentum")
+        return
 
-        active_trade = {
-            "type": trade_type,
-            "entry_price": mid_price,
-            "atr": atr,
-            "time": time.time()
-        }
+    if rsi < BUY_THRESH:
+        active_trades[symbol] = {"type": "buy", "time": time.time()}
+        await place_order(symbol, TRADE_SIZE, atr, mid_price)
+    elif rsi > SELL_THRESH:
+        active_trades[symbol] = {"type": "sell", "time": time.time()}
+        await place_order(symbol, -TRADE_SIZE, atr, mid_price)
 
-        await place_order(units, atr, mid_price)
-
-# === STREAM LISTENER ===
-
+# === PRICE STREAM ===
 async def stream_prices():
     url = OANDA_STREAM_URL.format(account_id=ACCOUNT_ID)
-    params = {"instruments": INSTRUMENT}
+    params = {"instruments": ",".join(INSTRUMENTS)}
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=HEADERS, params=params) as resp:
             async for line in resp.content:
@@ -136,40 +152,26 @@ async def stream_prices():
                     try:
                         msg = line.decode("utf-8").strip()
                         if "bids" in msg and "asks" in msg:
-                            import json
                             data = json.loads(msg)
+                            symbol = data["instrument"]
                             bid = float(data["bids"][0]["price"])
                             ask = float(data["asks"][0]["price"])
-                            await handle_price_update(bid, ask)
+                            await handle_price_update(symbol, bid, ask)
                     except Exception as e:
-                        print("Error processing message:", e)
+                        print("❌ Error in stream processing:", e)
 
-# === KEEP ALIVE ===
-
+# === RUNNER ===
 async def keep_stream_alive():
     while True:
         try:
             await stream_prices()
         except asyncio.CancelledError:
-            print("❌ Cancelled by user (Ctrl+C)")
+            print("🛑 Cancelled by user")
             break
         except Exception as e:
             print(f"⚠️ Stream error: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
 
-# === ENTRY POINT ===
-
 if __name__ == "__main__":
-    print(f"🚀 Starting live trading bot for {INSTRUMENT}")
+    print(f"🚀 Starting multi-currency trading bot for: {', '.join(INSTRUMENTS)}")
     asyncio.run(keep_stream_alive())
-    # Test log only — comment out after running once
-log_trade_to_csv({
-    "timestamp": datetime.utcnow().isoformat(),
-    "instrument": "EUR_USD",
-    "side": "BUY",
-    "entry_price": 1.12345,
-    "stop_loss": 1.12200,
-    "take_profit": 1.12600,
-    "atr": 0.00075,
-    "units": 1000
-})

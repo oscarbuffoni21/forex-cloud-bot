@@ -1,0 +1,10 @@
+# Best USD_JPY Strategy (15m, 3-month backtest)
+RSI_PERIOD = 21
+BUY_THRESH = 25
+SELL_THRESH = 65
+ATR_MULTIPLIER = 1.5
+MIN_SL = 0.0005
+TP_SL_RATIO = 2.5
+TotalTrades = 1105
+Profit = 15304.29
+WinRate = 44.4%
