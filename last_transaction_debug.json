@@ -1,0 +1,119 @@
+{
+  "transaction": {
+    "id": "13472",
+    "accountID": "101-004-31712326-001",
+    "userID": 31712326,
+    "batchID": "13471",
+    "requestID": "97404880228770334",
+    "time": "2025-05-26T21:57:41.792554160Z",
+    "type": "ORDER_FILL",
+    "orderID": "13471",
+    "instrument": "USD_JPY",
+    "units": "-2000",
+    "requestedUnits": "-2000",
+    "price": "142.742",
+    "pl": "0.0000",
+    "quotePL": "0",
+    "financing": "0.0000",
+    "baseFinancing": "0",
+    "commission": "0.0000",
+    "accountBalance": "99887.4553",
+    "gainQuoteHomeConversionFactor": "0.005138999926",
+    "lossQuoteHomeConversionFactor": "0.005190648167",
+    "guaranteedExecutionFee": "0.0000",
+    "quoteGuaranteedExecutionFee": "0",
+    "halfSpreadCost": "0.2169",
+    "fullVWAP": "142.742",
+    "reason": "MARKET_ORDER",
+    "tradeOpened": {
+      "price": "142.742",
+      "tradeID": "13472",
+      "units": "-2000",
+      "guaranteedExecutionFee": "0.0000",
+      "quoteGuaranteedExecutionFee": "0",
+      "halfSpreadCost": "0.2169",
+      "initialMarginRequired": "49.1546",
+      "guaranteedExecutionFeeHomeConversionCost": "0.00000000000000"
+    },
+    "fullPrice": {
+      "closeoutBid": "142.732",
+      "closeoutAsk": "142.795",
+      "timestamp": "2025-05-26T21:57:41.433903751Z",
+      "bids": [
+        {
+          "price": "142.742",
+          "liquidity": "500000"
+        },
+        {
+          "price": "142.741",
+          "liquidity": "500000"
+        },
+        {
+          "price": "142.740",
+          "liquidity": "2000000"
+        },
+        {
+          "price": "142.738",
+          "liquidity": "2000000"
+        },
+        {
+          "price": "142.736",
+          "liquidity": "5000000"
+        },
+        {
+          "price": "142.734",
+          "liquidity": "10000000"
+        },
+        {
+          "price": "142.732",
+          "liquidity": "10000000"
+        }
+      ],
+      "asks": [
+        {
+          "price": "142.784",
+          "liquidity": "500000"
+        },
+        {
+          "price": "142.786",
+          "liquidity": "2500000"
+        },
+        {
+          "price": "142.788",
+          "liquidity": "2000000"
+        },
+        {
+          "price": "142.791",
+          "liquidity": "5000000"
+        },
+        {
+          "price": "142.793",
+          "liquidity": "10000000"
+        },
+        {
+          "price": "142.795",
+          "liquidity": "10000000"
+        }
+      ]
+    },
+    "homeConversionFactors": {
+      "gainQuoteHome": {
+        "factor": "0.00513899992638"
+      },
+      "lossQuoteHome": {
+        "factor": "0.00519064816684"
+      },
+      "gainBaseHome": {
+        "factor": "0.73363258993629"
+      },
+      "lossBaseHome": {
+        "factor": "0.74100578179495"
+      }
+    },
+    "plHomeConversionCost": "0.00000000000000",
+    "baseFinancingHomeConversionCost": "0.00000000000000",
+    "guaranteedExecutionFeeHomeConversionCost": "0.00000000000000",
+    "homeConversionCost": "0.00000000000000"
+  },
+  "lastTransactionID": "13472"
+}

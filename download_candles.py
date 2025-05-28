@@ -12,7 +12,7 @@ HEADERS = {
 }
 INSTRUMENTS = ["EUR_USD", "GBP_USD", "USD_JPY"]
 GRANULARITY = "M15"
-DAYS = 90
+DAYS = 60
 
 # === FETCH FUNCTION ===
 def fetch_and_save_candles(symbol):

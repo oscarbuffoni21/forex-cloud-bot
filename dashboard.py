@@ -1,43 +1,31 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 import pandas as pd
-import os
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
-def read_dashboard(request: Request):
-    # === Load trades.csv ===
+def read_trades():
     try:
-        trades_df = pd.read_csv("trades.csv")
-        trades_df = trades_df.sort_values(by="time", ascending=False)
-        net_profit = round(trades_df["profit"].sum(), 2)
-        win_rate = round((trades_df[trades_df["profit"] > 0].shape[0] / trades_df.shape[0]) * 100, 2) if not trades_df.empty else 0.0
+     df = pd.read_csv("trades.csv").sort_values(by="time", ascending=False)
+     table = df.to_html(index=False, classes="data", border=1)
     except Exception as e:
-        trades_df = pd.DataFrame()
-        net_profit = 0.0
-        win_rate = 0.0
+        table = f"<p>Error reading trades.csv: {e}</p>"
 
-    # === Load optimizer_results.csv and filter ===
-    try:
-        optimizer_df = pd.read_csv("optimizer_results.csv")
-        filtered_optimizer = optimizer_df[
-            (optimizer_df["TotalTrades"] >= 50) &
-            (optimizer_df["Profit"] > 6.0)
-        ]
-        filtered_optimizer = filtered_optimizer.sort_values(by=["Profit", "WinRate"], ascending=False)
-        opt_data = filtered_optimizer.to_dict(orient="records")
-    except Exception as e:
-        opt_data = []
-
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "data": trades_df.to_dict(orient="records"),
-        "net_profit": net_profit,
-        "win_rate": win_rate,
-        "opt_data": opt_data
-    })
+    return f"""
+    <html>
+        <head>
+            <title>Live Trades</title>
+            <style>
+                body {{ font-family: Arial; padding: 40px; }}
+                .data {{ border-collapse: collapse; width: 100%; }}
+                .data th, .data td {{ padding: 8px 12px; border: 1px solid #ddd; text-align: right; }}
+                .data th {{ background-color: #f2f2f2; }}
+            </style>
+        </head>
+        <body>
+            <h2>📈 Live Trades</h2>
+            {table}
+        </body>
+    </html>
+    """
